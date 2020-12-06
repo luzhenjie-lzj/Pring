@@ -1,2 +1,2 @@
 # Pring
-Simple dependency injection.
+Simple dependency injection in JavaFX.
