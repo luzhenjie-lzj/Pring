@@ -8,6 +8,7 @@ import top.lings.pring.annotation.Controller;
 
 import java.io.File;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
@@ -71,7 +72,7 @@ public abstract class PringApplication extends Application {
                     }
                 }
                 if (instantiate) {
-                    container.put(clazz, clazz.getDeclaredConstructor().newInstance());
+                    instantiateBean(clazz);
                 }
             }
         } else {
@@ -81,6 +82,39 @@ public abstract class PringApplication extends Application {
                 } else {
                     instantiateBeans(packageName, subFile);
                 }
+            }
+        }
+    }
+
+    /**
+     * Instantiate specific type of object
+     *
+     * @param clazz type of object
+     */
+    private void instantiateBean(Class<?> clazz) throws Exception {
+        Constructor<?> annotatedConstructor = null;
+        for (Constructor<?> constructor : clazz.getConstructors()) {
+            for (Annotation annotation : constructor.getAnnotations()) {
+                if (annotation.annotationType() == Autowired.class) {
+                    annotatedConstructor = constructor;
+                    break;
+                }
+            }
+            if (annotatedConstructor != null) {
+                break;
+            }
+        }
+        if (container.get(clazz) == null) {
+            if (annotatedConstructor == null) {
+                container.put(clazz, clazz.getDeclaredConstructor().newInstance());
+            } else {
+                Class<?>[] classes = annotatedConstructor.getParameterTypes();
+                Object[] parameters = new Object[classes.length];
+                for (int i = 0; i < classes.length; i++) {
+                    instantiateBean(classes[i]);
+                    parameters[i] = container.get(classes[i]);
+                }
+                container.put(clazz, annotatedConstructor.newInstance(parameters));
             }
         }
     }
