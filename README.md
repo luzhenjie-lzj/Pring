@@ -1,0 +1,2 @@
+# Pring
+Simple dependency injection.
