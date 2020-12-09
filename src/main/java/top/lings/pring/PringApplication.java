@@ -10,9 +10,12 @@ import java.io.File;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 public abstract class PringApplication extends Application {
 
@@ -24,7 +27,7 @@ public abstract class PringApplication extends Application {
     }
 
     /**
-     * scan specified packages then initialize beans.
+     * Scan specified packages then initialize beans.
      */
     private void initializeBeans() throws Exception {
         ComponentScan annotation = getClass().getAnnotation(ComponentScan.class);
@@ -33,6 +36,52 @@ public abstract class PringApplication extends Application {
         }
         String[] valuesOfComponentScan = annotation.value();
         String fileName = getClass().getResource(getClass().getSimpleName() + ".class").getFile();
+        if (fileName.contains(".jar")) {
+            instantiateBeansInJar(fileName, valuesOfComponentScan);
+        } else {
+            instantiateBeansNotInJar(fileName, valuesOfComponentScan);
+        }
+    }
+
+    /**
+     * If classes are in jar,then use this
+     *
+     * @param fileName              PringApplication class file name
+     * @param valuesOfComponentScan value of @ComponentScan
+     */
+    private void instantiateBeansInJar(String fileName, String[] valuesOfComponentScan) throws Exception {
+        fileName = fileName.substring(0, fileName.indexOf(".jar") + 4).replaceAll("file:/", "");
+        JarFile jarFile = new JarFile(new File(fileName));
+        Enumeration<JarEntry> entries = jarFile.entries();
+        while (entries.hasMoreElements()) {
+            JarEntry entry = entries.nextElement();
+            for (String value : valuesOfComponentScan) {
+                value = value.replaceAll("\\.", "/");
+                if (entry.getName().contains(value) && entry.getName().endsWith(".class")) {
+                    String name = entry.getName();
+                    name = name.substring(0, name.lastIndexOf(".class"));
+                    if (name.contains("/")) {
+                        name = name.replaceAll("/", ".");
+                    }
+                    if (name.contains("\\")) {
+                        name = name.replaceAll("\\\\", ".");
+                    }
+                    Class<?> clazz = Class.forName(name);
+                    if (instantiateBeanOrNot(clazz)) {
+                        instantiateBean(clazz);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * If classes are not in jar,then use this
+     *
+     * @param fileName              PringApplication class file name
+     * @param valuesOfComponentScan value of @ComponentScan
+     */
+    private void instantiateBeansNotInJar(String fileName, String[] valuesOfComponentScan) throws Exception {
         for (String value : valuesOfComponentScan) {
             String temp = value.replaceAll("\\.", "/");
             if (fileName.contains(temp)) {
@@ -53,7 +102,7 @@ public abstract class PringApplication extends Application {
     }
 
     /**
-     * instantiate beans recursively
+     * Instantiate beans recursively
      *
      * @param packageName package name of package in which file is stored,it is
      *                    expressed using "." instead of file-separator
@@ -65,20 +114,14 @@ public abstract class PringApplication extends Application {
             if (fileName.endsWith("class")) {
                 String className = packageName + "." + fileName.substring(0, fileName.indexOf(".class"));
                 Class<?> clazz = Class.forName(className);
-                boolean instantiate = false;
-                for (Annotation annotation : clazz.getAnnotations()) {
-                    if (annotation.annotationType() == Component.class || annotation.annotationType() == Controller.class) {
-                        instantiate = true;
-                    }
-                }
-                if (instantiate) {
+                if (instantiateBeanOrNot(clazz)) {
                     instantiateBean(clazz);
                 }
             }
         } else {
             for (File subFile : Objects.requireNonNull(file.listFiles())) {
                 if (subFile.isDirectory()) {
-                    instantiateBeans(packageName + "." + subFile.getName(), subFile);
+                    instantiateBeans(packageName + "." + subFile.getName().replaceAll("!", ""), subFile);
                 } else {
                     instantiateBeans(packageName, subFile);
                 }
@@ -87,9 +130,25 @@ public abstract class PringApplication extends Application {
     }
 
     /**
+     * Determine whether to instantiate object based on annotation
+     *
+     * @param clazz class of to be instantiated object
+     * @return true:instantiate  false:don't instantiate
+     */
+    private boolean instantiateBeanOrNot(Class<?> clazz) {
+        boolean instantiate = false;
+        for (Annotation annotation : clazz.getAnnotations()) {
+            if (annotation.annotationType() == Component.class || annotation.annotationType() == Controller.class) {
+                instantiate = true;
+            }
+        }
+        return instantiate;
+    }
+
+    /**
      * Instantiate specific type of object
      *
-     * @param clazz type of object
+     * @param clazz class of object
      */
     private void instantiateBean(Class<?> clazz) throws Exception {
         Constructor<?> annotatedConstructor = null;
@@ -120,7 +179,7 @@ public abstract class PringApplication extends Application {
     }
 
     /**
-     * fill bean with attribute variable which is annotated by @Autowired
+     * Fill bean with attribute variable which is annotated by @Autowired
      */
     private void fillBeans() {
         container.forEach((clazz, object) -> {
