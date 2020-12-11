@@ -58,7 +58,7 @@ public abstract class PringApplication extends Application {
             for (String value : valuesOfComponentScan) {
                 value = value.replaceAll("\\.", "/");
                 if (entry.getName().contains(value) && entry.getName().endsWith(".class")) {
-                    String name = entry.getName();
+                    String name = entry.getName();  //name will prefix with the the folder in the jar package
                     name = name.substring(0, name.lastIndexOf(".class"));
                     if (name.contains("/")) {
                         name = name.replaceAll("/", ".");
@@ -83,10 +83,23 @@ public abstract class PringApplication extends Application {
      */
     private void instantiateBeansNotInJar(String fileName, String[] valuesOfComponentScan) throws Exception {
         for (String value : valuesOfComponentScan) {
-            String temp = value.replaceAll("\\.", "/");
-            if (fileName.contains(temp)) {
-                fileName = fileName.substring(0, fileName.indexOf(temp) + temp.length());
-                File file = new File(fileName);
+            String rootFolderName = value;
+            if (rootFolderName.contains(".")) {
+                rootFolderName = "/" + value.substring(0, value.indexOf(".")) + "/";
+            } else {
+                rootFolderName = "/" + rootFolderName + "/";
+            }
+            String followingFolder = value.substring(value.indexOf(".") + 1).replaceAll("\\.", "/");
+            if (fileName.contains(rootFolderName)) {
+                StringBuilder fileNameBuilder = new StringBuilder(fileName.substring(0, fileName.indexOf(rootFolderName) + rootFolderName.length()));
+                if (!followingFolder.equals(value)) {
+                    //which means value contains "."
+                    fileNameBuilder.append(followingFolder);
+                }
+                File file = new File(fileNameBuilder.toString());
+                if (!file.exists()) {
+                    throw new Exception("Invalid package name set in component scan:" + value);
+                }
                 if (file.isFile()) {
                     throw new Exception("Expect directory but file:" + value);
                 } else {
